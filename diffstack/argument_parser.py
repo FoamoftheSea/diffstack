@@ -144,7 +144,7 @@ parser.add_argument('--cl_trajlen',
 parser.add_argument('--predictor',
                     help='Choose prediction model [tpp, constvel]',
                     type=str,
-                    default="tpp_origin")
+                    default="tpp")
 
 parser.add_argument('--planner',
                     help='Choice of planner [none, mpc, fan, fan_mpc, cvae]',
