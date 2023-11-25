@@ -172,8 +172,8 @@ class SplinePlanner(object):
             delta_x = delta_x.squeeze(0)
         return delta_x
 
-    def gen_terminals_lane(self, x0, tf, lanes):
-        if lanes is None:
+    def gen_terminals_lane(self, x0, tf, lane_interps, lanes):
+        if lane_interps is None:
             return self.gen_terminals(x0, tf)
 
         gs = [self.d_lane_lat_grid.shape[0], self.acce_grid.shape[0]]
@@ -188,14 +188,17 @@ class SplinePlanner(object):
         if x0.ndim == 1:
             x0 = x0.unsqueeze(0)
 
-        for lane in lanes:
-            f, p_start = lane  # f: interplation function f(ds)--> lane_x,y,yaw
+        for lane_interp, lane in zip(lane_interps, lanes):
+            f, p_start = lane_interp  # f: interplation function f(ds)--> lane_x,y,yaw
             if isinstance(p_start, np.ndarray):
                 p_start = torch.from_numpy(p_start)
             p_start = p_start.to(x0.device)
-            offset = x0[:, :2]-p_start[None, :2]
-            s_offset = offset[:, 0] * \
-                torch.cos(p_start[2])+offset[:, 1]*torch.sin(p_start[2])  # distance projected onto lane, from its starting point
+            # offset = x0[:, :2]-p_start[None, :2]
+            # s_offset = offset[:, 0] * \
+            #     torch.cos(p_start[2])+offset[:, 1]*torch.sin(p_start[2])  # distance projected onto lane, from its starting point
+            ego_waypoint_diffs = lane[:, :2] - x0[:, :2]
+            lane_waypoint_distances = torch.linalg.norm(lane[:, :2] - lane[0, :2], axis=-1).cumsum(dim=0)
+            s_offset = lane_waypoint_distances[torch.linalg.norm(ego_waypoint_diffs).argmax()]
 
             # TODO this can be wildly inaccurate when lane is strongly curved
             # instead we should use the projection of current state onto lane, and find the distance along lane
@@ -279,7 +282,7 @@ class SplinePlanner(object):
             lane_interp = [interp_lanes(lane, extrapolate=False) for lane in lanes]
 
             xf = self.gen_terminals_lane(
-                x0, tf, lane_interp)
+                x0, tf, lane_interp, lanes)
 
         # x, y, v, a, yaw,r, t
         traj = self.calc_trajectories(x0, tf, xf)
@@ -298,7 +301,7 @@ class SplinePlanner(object):
             # Do not allow extrapolation, will return nan
             lane_interp = [interp_lanes(lane, extrapolate=False) for lane in lanes]
             # x, y, v, yaw
-            xf_set = self.gen_terminals_lane(x0_set, tf, lane_interp)
+            xf_set = self.gen_terminals_lane(x0_set, tf, lane_interp, lanes)
 
         num_node = x0_set.shape[0]
         num = xf_set.shape[1]
